@@ -673,7 +673,7 @@ EOF
   } || trata_erro "instala_puppeteer_base"
 }
 
-# Instalar FFMPEG 6.1 de forma robusta
+# Instalar FFMPEG 6.1 oficial
 instala_ffmpeg_base() {
   banner
   printf "${WHITE} >> Instalación FFMPEG 6.1...\n\n"
@@ -684,34 +684,28 @@ instala_ffmpeg_base() {
     return
   fi
 
-  # Actualizar repositorios e instalar versión base de Ubuntu (dependencias)
+  # Actualizar repositorios e instalar dependencias básicas
   sudo apt update
-  sudo apt install ffmpeg -y >/dev/null 2>&1
+  sudo apt install -y wget tar xz-utils build-essential pkg-config yasm >/dev/null 2>&1
 
-  # Comprobar arquitectura
-  if [ "${ARCH}" = "x86_64" ]; then
-    FFMPEG_FILE="ffmpeg-n6.1-latest-linux64-gpl-6.1.tar.xz"
-  elif [ "${ARCH}" = "aarch64" ]; then
-    FFMPEG_FILE="ffmpeg-n6.1-latest-linuxarm64-gpl-6.1.tar.xz"
-  else
-    printf "${RED} >> Arquitectura no compatible: ${ARCH}${WHITE}\n"
-    exit 1
-  fi
-
-  # Descargar FFMPEG 6.1 desde GitHub
-  URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${FFMPEG_FILE}"
+  # Descargar FFmpeg 6.1 oficial desde GitHub
+  FFMPEG_FILE="ffmpeg-6.1.tar.gz"
+  URL="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n6.1.1.tar.gz"
   wget -q --show-progress "${URL}" -O "${FFMPEG_FILE}"
   if [ $? -ne 0 ]; then
     printf "${RED} >> No se pudo descargar FFMPEG automáticamente. Descarga manualmente desde:\n${URL}${WHITE}\n"
     exit 1
   fi
 
-  # Extraer y copiar binarios
+  # Extraer y compilar
   mkdir -p "${FFMPEG_DIR}"
-  tar -xf "${FFMPEG_FILE}" -C "${FFMPEG_DIR}" --strip-components=1
-  sudo cp -f "${FFMPEG_DIR}/bin/ffmpeg" /usr/bin/
-  sudo cp -f "${FFMPEG_DIR}/bin/ffprobe" /usr/bin/
-  sudo cp -f "${FFMPEG_DIR}/bin/ffplay" /usr/bin/
+  tar -xzf "${FFMPEG_FILE}" -C "${FFMPEG_DIR}" --strip-components=1
+
+  cd "${FFMPEG_DIR}" || exit 1
+  ./configure --prefix=/usr --enable-gpl --enable-nonfree --enable-libx264 --enable-libx265 >/dev/null 2>&1
+  make -j$(nproc) >/dev/null 2>&1
+  sudo make install >/dev/null 2>&1
+  cd - >/dev/null 2>&1
 
   # Limpiar archivos temporales
   rm -rf "${FFMPEG_DIR}" "${FFMPEG_FILE}"
@@ -723,7 +717,6 @@ instala_ffmpeg_base() {
   INSTALLED_VERSION=$(ffmpeg -version | head -n1)
   printf "${GREEN} >> FFMPEG instalado correctamente: ${INSTALLED_VERSION}${WHITE}\n"
 }
-
 # Instalar PostgreSQL 15
 instala_postgres_base() {
   banner
