@@ -673,69 +673,55 @@ EOF
   } || trata_erro "instala_puppeteer_base"
 }
 
-# Instalar FFMPEG
+# Instalar FFMPEG 6.1 de forma robusta
 instala_ffmpeg_base() {
   banner
-  printf "${WHITE} >> Instalación FFMPEG 6...\n"
-  echo
+  printf "${WHITE} >> Instalación FFMPEG 6.1...\n\n"
 
+  # Verificar si ya está instalado
   if [ -f "${FFMPEG}" ]; then
     printf " >> FFMPEG ya ha sido instalado. Continuando con la instalación...\n"
-    echo
-  else
-
-    sleep 2
-
-    {
-      sudo apt install ffmpeg -y
-
-      if [ "${ARCH}" = "x86_64" ]; then
-        if [ "${UBUNTU_VERSION}" = "20.04" ] || [ "${UBUNTU_VERSION}" = "22.04" ]; then
-          FFMPEG_FILE="ffmpeg-n6.1-latest-linux64-gpl-6.1.tar.xz"
-          wget -q https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${FFMPEG_FILE}
-          if [ $? -ne 0 ]; then
-            printf "${RED} >> Error al descargar el archivo ${FFMPEG_FILE}. Presione Entrar para continuar...${WHITE} \n"
-            read
-          fi
-          mkdir -p ${FFMPEG_DIR}
-          tar -xvf ${FFMPEG_FILE} -C ${FFMPEG_DIR} >/dev/null 2>&1
-
-          sudo cp ${FFMPEG_DIR}/ffmpeg-n6.1-latest-linux64-gpl-6.1/bin/ffmpeg /usr/bin/ >/dev/null 2>&1
-          sudo cp ${FFMPEG_DIR}/ffmpeg-n6.1-latest-linux64-gpl-6.1/bin/ffprobe /usr/bin/ >/dev/null 2>&1
-          sudo cp ${FFMPEG_DIR}/ffmpeg-n6.1-latest-linux64-gpl-6.1/bin/ffplay /usr/bin/ >/dev/null 2>&1
-
-          rm -rf ${FFMPEG_DIR} >/dev/null 2>&1
-          rm ${FFMPEG_FILE} >/dev/null 2>&1
-        fi
-      elif [ "${ARCH}" = "aarch64" ]; then
-        if [ "${UBUNTU_VERSION}" = "20.04" ] || [ "${UBUNTU_VERSION}" = "22.04" ]; then
-          FFMPEG_FILE="ffmpeg-n6.1-latest-linuxarm64-gpl-6.1.tar.xz"
-          wget -q https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${FFMPEG_FILE}
-          if [ $? -ne 0 ]; then
-            printf "${RED} >> Error al descargar el archivo ${FFMPEG_FILE}. Presione Entrar para continuar...${WHITE} \n"
-            read
-          fi
-          mkdir -p ${FFMPEG_DIR}
-          tar -xvf ${FFMPEG_FILE} -C ${FFMPEG_DIR} >/dev/null 2>&1
-
-          sudo cp ${FFMPEG_DIR}/ffmpeg-n6.1-latest-linuxarm64-gpl-6.1/bin/ffmpeg /usr/bin/ >/dev/null 2>&1
-          sudo cp ${FFMPEG_DIR}/ffmpeg-n6.1-latest-linuxarm64-gpl-6.1/bin/ffprobe /usr/bin/ >/dev/null 2>&1
-          sudo cp ${FFMPEG_DIR}/ffmpeg-n6.1-latest-linuxarm64-gpl-6.1/bin/ffplay /usr/bin/ >/dev/null 2>&1
-
-          rm -rf ${FFMPEG_DIR} >/dev/null 2>&1
-          rm ${FFMPEG_FILE} >/dev/null 2>&1
-        fi
-      else
-        echo "Arquitectura no compatible."
-        exit 1
-      fi
-
-      export PATH=/usr/bin:${PATH}
-      echo 'export PATH=/usr/bin:${PATH}' >>~/.bashrc
-      source ~/.bashrc >/dev/null 2>&1
-      touch "${FFMPEG}"
-    } || trata_erro "instala_ffmpeg_base"
+    return
   fi
+
+  # Actualizar repositorios e instalar versión base de Ubuntu (dependencias)
+  sudo apt update
+  sudo apt install ffmpeg -y >/dev/null 2>&1
+
+  # Comprobar arquitectura
+  if [ "${ARCH}" = "x86_64" ]; then
+    FFMPEG_FILE="ffmpeg-n6.1-latest-linux64-gpl-6.1.tar.xz"
+  elif [ "${ARCH}" = "aarch64" ]; then
+    FFMPEG_FILE="ffmpeg-n6.1-latest-linuxarm64-gpl-6.1.tar.xz"
+  else
+    printf "${RED} >> Arquitectura no compatible: ${ARCH}${WHITE}\n"
+    exit 1
+  fi
+
+  # Descargar FFMPEG 6.1 desde GitHub
+  URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${FFMPEG_FILE}"
+  wget -q --show-progress "${URL}" -O "${FFMPEG_FILE}"
+  if [ $? -ne 0 ]; then
+    printf "${RED} >> No se pudo descargar FFMPEG automáticamente. Descarga manualmente desde:\n${URL}${WHITE}\n"
+    exit 1
+  fi
+
+  # Extraer y copiar binarios
+  mkdir -p "${FFMPEG_DIR}"
+  tar -xf "${FFMPEG_FILE}" -C "${FFMPEG_DIR}" --strip-components=1
+  sudo cp -f "${FFMPEG_DIR}/bin/ffmpeg" /usr/bin/
+  sudo cp -f "${FFMPEG_DIR}/bin/ffprobe" /usr/bin/
+  sudo cp -f "${FFMPEG_DIR}/bin/ffplay" /usr/bin/
+
+  # Limpiar archivos temporales
+  rm -rf "${FFMPEG_DIR}" "${FFMPEG_FILE}"
+
+  # Marcar como instalado
+  touch "${FFMPEG}"
+
+  # Verificar versión instalada
+  INSTALLED_VERSION=$(ffmpeg -version | head -n1)
+  printf "${GREEN} >> FFMPEG instalado correctamente: ${INSTALLED_VERSION}${WHITE}\n"
 }
 
 # Instalar PostgreSQL 15
