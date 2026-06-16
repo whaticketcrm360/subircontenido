@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# reset shell colors
+tput init
+
+# --- guard: recusa rodar como processo gerenciado pelo PM2 ---
+# Quando PM2 lanca um processo, expoe pm_id / PM2_HOME no env. O instalador
+# e one-shot — sob PM2 (autorestart=true default) ele sai limpo, PM2 reinicia,
+# o instalador roda de novo: loop infinito + zumbis na lista do pm2.
+if [ -n "${pm_id:-}" ] || [ -n "${PM2_HOME:-}" ] || [ -n "${PM2_USAGE:-}" ] || [ -n "${pm_uid:-}" ]; then
+  echo ""
+  echo "  [ERRO] Detectado que este script foi lancado pelo PM2 (pm_id=${pm_id:-?})."
+  echo ""
+  echo "  Este instalador NAO deve rodar sob PM2 — e um script one-shot."
+  echo "  Sob PM2 (autorestart=true) ele entra em loop infinito e polui o pm2 list."
+  echo ""
+  echo "  Como corrigir:"
+  echo "    1) pm2 list                        # identifique a entrada"
+  echo "    2) pm2 delete <id-ou-nome>"
+  echo "    3) pm2 save"
+  echo "    4) Rode o instalador direto:  bash $0"
+  echo ""
+  exit 1
+fi
+
+# https://stackoverflow.com/questions/59895/how-to-get-the-source-directory-of-a-bash-script-from-within-the-script-itself
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  PROJECT_ROOT="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$PROJECT_ROOT/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+PROJECT_ROOT="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+
+# required imports
+source "${PROJECT_ROOT}"/variables/manifest.sh
+source "${PROJECT_ROOT}"/utils/manifest.sh
+source "${PROJECT_ROOT}"/lib/manifest.sh
+
+# limpa entradas PM2 zumbis que apontem para este diretorio (no-op se PM2
+# nao instalado ainda). Defesa contra `pm2 start <installer>` previo.
+pm2_cleanup_installer_zombies
+
+# Gerar senha aleatória para o usuário deploycrm
+deploy_password=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9')
+
+# interactive CLI
+inquiry_options
+
+# dependencies related
+system_update
+system_reboot_check
+system_set_timezone
+system_create_folder
+system_mv_folder
+
+# backend related
+system_unzip_crm
+backend_set_env
+backend_db_create
+backend_node_dependencies
+system_docker_restart
+backend_db_migrate
+backend_db_seed
+backend_start_pm2
+backend_nginx_setup
+
+# frontend related
+frontend_set_env
+frontend_remove_server_js
+frontend_set_server_js
+frontend_node_dependencies
+frontend_node_build
+frontend_start_pm2
+frontend_nginx_setup
+
+# network related
+system_nginx_restart
+system_certbot_setup
+install_firewall
+system_success

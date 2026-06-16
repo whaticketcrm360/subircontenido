@@ -1,0 +1,286 @@
+
+# Arquitetura:
+# • nginx (host) ocupa 80/443 e faz SSL termination + proxy para os containers
+# • Containers expostos só em 127.0.0.1:<porta-host> — sem Traefik
+# • Service traefik foi removido — usar nginx no host
+
+services:
+  # Banco de dados PostgreSQL 17
+  postgres:
+    image: postgres:17-alpine
+    container_name: crm-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      # Secret — sem fallback; o instalador gera em .env.docker.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD nao definido — passe --env-file .env.docker}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:${DB_PORT:-7544}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    command:
+      - "postgres"
+      # Conexões — backend usa pool (Sequelize default 10) por instância
+      - "-c"
+      - "max_connections=100"
+      # Memória — sized for VPS 4-8 GB
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "effective_cache_size=2GB"
+      - "-c"
+      - "work_mem=4MB"
+      - "-c"
+      - "maintenance_work_mem=128MB"
+      # Processamento paralelo
+      - "-c"
+      - "max_worker_processes=8"
+      - "-c"
+      - "max_parallel_workers=8"
+      - "-c"
+      - "max_parallel_workers_per_gather=4"
+      - "-c"
+      - "max_parallel_maintenance_workers=4"
+      - "-c"
+      - "parallel_tuple_cost=0.1"
+      - "-c"
+      - "parallel_setup_cost=1000.0"
+      - "-c"
+      - "min_parallel_table_scan_size=8MB"
+      - "-c"
+      - "min_parallel_index_scan_size=512kB"
+      # I/O — assume SSD/NVMe
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "random_page_cost=1.1"
+      # WAL
+      - "-c"
+      - "wal_level=replica"
+      - "-c"
+      - "max_wal_size=4GB"
+      - "-c"
+      - "min_wal_size=1GB"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "checkpoint_timeout=15min"
+      # Commit assíncrono — perde até ~200ms em crash, aceitável para atendimento
+      - "-c"
+      - "synchronous_commit=off"
+      # Timeouts — protege contra transações esquecidas e queries órfãs
+      - "-c"
+      - "idle_in_transaction_session_timeout=60000"
+      - "-c"
+      - "statement_timeout=300000"
+      # Autovacuum mais agressivo (apps com muito INSERT em Messages/Tickets)
+      - "-c"
+      - "autovacuum_vacuum_scale_factor=0.05"
+      - "-c"
+      - "autovacuum_analyze_scale_factor=0.025"
+      # Estatísticas
+      - "-c"
+      - "default_statistics_target=100"
+      # Logging — só queries lentas + lock waits
+      - "-c"
+      - "log_min_duration_statement=1000"
+      - "-c"
+      - "log_lock_waits=on"
+      # Timezone
+      - "-c"
+      - "timezone=America/Tegucigalpa"
+      - "-c"
+      - "log_timezone=America/Tegucigalpa"
+    networks:
+      - crm-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    shm_size: 256mb
+
+  # Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        IMAGE_SOURCE: ${IMAGE_SOURCE:-https://zdg.dev.br/}
+    container_name: crm-backend
+    environment:
+      # Ambiente
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 7563
+      PROXY_PORT: ${PROXY_PORT:-8443}
+
+      # URLs
+      BACKEND_URL: ${BACKEND_URL:-https://dockerapi.comunidadezdg.com.br}
+      FRONTEND_URL: ${FRONTEND_URL:-https://dockerapp.comunidadezdg.com.br}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-crm.io}
+
+      # Subdomínios extras / CORS (vazios por padrão; preencher só se houver paralelo legado)
+      FRONTEND_URL_2: ${FRONTEND_URL_2:-}
+      SECURE_URL: ${SECURE_URL:-}
+
+      # Banco de dados
+      DB_DIALECT: ${DB_DIALECT:-postgres}
+      DB_PORT: 5432
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      # Secrets — sem fallback; o instalador gera valores únicos em .env.docker.
+      # Se este compose for executado sem `--env-file .env.docker`, falha aqui
+      # com mensagem clara em vez de subir com senha pública.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD nao definido — passe --env-file .env.docker (gerado pelo instalador)}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+
+      # JWT — idem secrets acima
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET nao definido — passe --env-file .env.docker}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET nao definido — passe --env-file .env.docker}
+
+      # Chrome
+      CHROME_BIN: ${CHROME_BIN:-/usr/bin/google-chrome-stable}
+
+      # Sleep intervals
+      MIN_SLEEP_BUSINESS_HOURS: ${MIN_SLEEP_BUSINESS_HOURS:-2500}
+      MAX_SLEEP_BUSINESS_HOURS: ${MAX_SLEEP_BUSINESS_HOURS:-5000}
+      MIN_SLEEP_AUTO_REPLY: ${MIN_SLEEP_AUTO_REPLY:-2500}
+      MAX_SLEEP_AUTO_REPLY: ${MAX_SLEEP_AUTO_REPLY:-5000}
+      MIN_SLEEP_INTERVAL: ${MIN_SLEEP_INTERVAL:-250}
+      MAX_SLEEP_INTERVAL: ${MAX_SLEEP_INTERVAL:-500}
+
+      # Limites
+      USER_LIMIT: ${USER_LIMIT:-99}
+      CONNECTIONS_LIMIT: ${CONNECTIONS_LIMIT:-99}
+
+      # Redis (opcional)
+      # IO_REDIS_SERVER: ${IO_REDIS_SERVER:-}
+      # IO_REDIS_PASSWORD: ${IO_REDIS_PASSWORD:-}
+      # IO_REDIS_PORT: ${IO_REDIS_PORT:-}
+      # IO_REDIS_DB_SESSION: ${IO_REDIS_DB_SESSION:-}
+
+    ports:
+      - "${BACKEND_PORT:-7563}:7563"
+    volumes:
+      - backend_public:/app/public
+      - backend_sessions:/app/sessions
+      - backend_uploads:/app/uploads
+      # Cache regenerável (whatsapp-web.js, etc.) em RAM — auto-limpa em restart
+      - type: tmpfs
+        target: /app/cache
+        tmpfs:
+          size: 500M
+      # backend_logs removido — logs vão para stdout via driver json-file (rotação automática)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - crm-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`${BACKEND_DOMAIN:-dockerapi.comunidadezdg.com.br}`)"
+      - "traefik.http.routers.backend.entrypoints=web"
+      - "traefik.http.routers.backend.service=backend"
+      - "traefik.http.services.backend.loadbalancer.server.port=7563"
+      - "traefik.http.routers.backend-secure.rule=Host(`${BACKEND_DOMAIN:-dockerapi.comunidadezdg.com.br}`)"
+      - "traefik.http.routers.backend-secure.entrypoints=websecure"
+      - "traefik.http.routers.backend-secure.service=backend-secure"
+      - "traefik.http.routers.backend-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.services.backend-secure.loadbalancer.server.port=7563"
+      - "traefik.http.routers.backend.middlewares=backend-redirect"
+      - "traefik.http.middlewares.backend-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.backend-redirect.redirectscheme.port=8443"
+      - "traefik.http.middlewares.backend-redirect.redirectscheme.permanent=true"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:7563', (r) => {process.exit(r.statusCode === 200 || r.statusCode === 404 ? 0 : 1)})\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Frontend (Next.js — oficial)
+  # ATENÇÃO: NEXT_PUBLIC_* são baked-in no build. Ao mudar BACKEND_URL ou a
+  # encryption key, é necessário rebuild: docker compose up -d --build frontend.
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${BACKEND_URL:-https://dockerapi.comunidadezdg.com.br}
+        NEXT_PUBLIC_DEFAULT_ENCRYPTION_KEY: ${FRONTEND_ENCRYPTION_KEY:-crm-passaporte-2024-encryption-key}
+        NEXT_PUBLIC_INTERACTIVE_BAILEYS: ${NEXT_PUBLIC_INTERACTIVE_BAILEYS:-false}
+        IMAGE_SOURCE: ${IMAGE_SOURCE:-https://zdg.dev.br/}
+    container_name: crm-frontend
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 4444
+    ports:
+      - "${FRONTEND_PORT:-7564}:4444"
+    depends_on:
+      - backend
+    networks:
+      - crm-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${FRONTEND_DOMAIN:-dockerapp.comunidadezdg.com.br}`)"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.routers.frontend.service=frontend"
+      - "traefik.http.services.frontend.loadbalancer.server.port=4444"
+      - "traefik.http.routers.frontend-secure.rule=Host(`${FRONTEND_DOMAIN:-dockerapp.comunidadezdg.com.br}`)"
+      - "traefik.http.routers.frontend-secure.entrypoints=websecure"
+      - "traefik.http.routers.frontend-secure.service=frontend-secure"
+      - "traefik.http.routers.frontend-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend-secure.loadbalancer.server.port=4444"
+      - "traefik.http.routers.frontend.middlewares=frontend-redirect"
+      - "traefik.http.middlewares.frontend-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.frontend-redirect.redirectscheme.port=8443"
+      - "traefik.http.middlewares.frontend-redirect.redirectscheme.permanent=true"
+    healthcheck:
+      # Usa node (já presente em node:20-alpine) — busybox wget não suporta --max-redirect.
+      # Aceita qualquer status < 400 (inclui 2xx e 3xx do Next App Router redirect /login).
+      test: ["CMD-SHELL", "node -e 'require(\"http\").get(\"http://localhost:4444\",r=>process.exit(r.statusCode<400?0:1)).on(\"error\",()=>process.exit(1))'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  postgres_data:
+    driver: local
+    labels:
+      com.crm.backup: "critical"
+      com.crm.description: "PostgreSQL — DB principal, sem isto perde tudo"
+  backend_sessions:
+    driver: local
+    labels:
+      com.crm.backup: "critical"
+      com.crm.description: "Baileys WhatsApp sessions — sem isto reconecta com QR"
+  backend_uploads:
+    driver: local
+    labels:
+      com.crm.backup: "critical"
+      com.crm.description: "Uploads dos clientes — arquivos anexados em mensagens"
+  backend_public:
+    driver: local
+    labels:
+      com.crm.backup: "optional"
+      com.crm.description: "Assets dinâmicos do backend (branding etc.)"
+  # backend_logs removido — usa driver json-file com rotação automática
+  # backend_cache removido — agora é tmpfs em RAM
+  # traefik_letsencrypt removido — Traefik não é usado neste deploy
+
+networks:
+  crm-network:
+    driver: bridge
