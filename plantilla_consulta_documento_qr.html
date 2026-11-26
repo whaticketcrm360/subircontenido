@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#244d78">
+  <title>Consulta de documento</title>
+  <style>
+    :root {
+      --navy: #214b78;
+      --blue: #087fc2;
+      --page: #f4f7fa;
+      --text: #23364b;
+      --green: #20a64a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 18px 14px 24px;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse at 85% 22%, rgba(73,126,174,.22), transparent 35%),
+        linear-gradient(155deg, #355c85 0%, #244c75 48%, #173e66 100%);
+    }
+    .top-logo {
+      width: 84px; height: 84px;
+      margin: 0 auto 34px;
+      display: grid; place-items: center;
+      background: #fff; border: 3px solid #111;
+      overflow: hidden;
+    }
+    .top-logo img, .header-logo img { width: 100%; height: 100%; object-fit: contain; }
+    .top-logo .placeholder, .header-logo .placeholder {
+      color: #777; font-size: 10px; text-align: center; padding: 5px;
+    }
+    .page {
+      width: min(100%, 720px);
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 5px;
+      overflow: hidden;
+      box-shadow: 0 12px 35px rgba(0,0,0,.2);
+    }
+    header {
+      min-height: 58px;
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 18px;
+      color: white; background: var(--navy);
+      border-bottom: 3px solid #00a6e8;
+    }
+    .shield { color: #ffd400; font-size: 21px; }
+    header h1 { margin: 0; font-size: 15px; letter-spacing: .2px; flex: 1; }
+    .qr-link {
+      width: 38px; height: 38px; flex: 0 0 38px;
+      display: grid; place-items: center;
+      border-radius: 7px;
+      color: #fff; background: rgba(255,255,255,.13);
+      text-decoration: none;
+      transition: background .2s ease;
+    }
+    .qr-link:hover { background: rgba(255,255,255,.24); }
+    .qr-link svg { width: 23px; height: 23px; display: block; }
+    .info { padding: 22px 24px 25px; border-bottom: 1px solid #e1e5e9; }
+    .info-title {
+      padding: 13px 15px; margin-bottom: 19px;
+      color: #1762a7; background: #e5f3fc;
+      border-left: 4px solid #00a8e8; border-radius: 4px;
+      font-size: 11px; font-weight: 700; letter-spacing: .25px;
+    }
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .field.full { grid-column: 1 / -1; }
+    .field label {
+      display: block; margin-bottom: 7px;
+      color: #526171; font-size: 10px; font-weight: 700;
+    }
+    .field .value {
+      min-height: 34px; padding: 9px 11px;
+      background: #f0f2f4; border: 1px solid #dfe3e7;
+      border-radius: 4px; font-size: 12px;
+    }
+    .document-section { padding: 22px 20px 26px; }
+    .document-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 14px; flex-wrap: wrap; margin-bottom: 18px;
+    }
+    .document-title { display: flex; align-items: center; gap: 9px; color: var(--navy); }
+    .document-title h2 { margin: 0; font-size: 16px; }
+    .status {
+      display: inline-block; margin-top: 7px; padding: 4px 9px;
+      border-radius: 20px; background: #e8f5e9; color: #27833d;
+      font-size: 9px; font-weight: 700;
+    }
+    .download {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      min-height: 39px; padding: 0 16px; border-radius: 5px;
+      color: #fff; background: var(--green); text-decoration: none;
+      font-size: 11px; font-weight: 700;
+      box-shadow: 0 2px 5px rgba(0,0,0,.15);
+    }
+    .download:hover { background: #18883b; }
+    .preview {
+      width: 100%; min-height: 360px; aspect-ratio: 0.72;
+      border: 3px solid #111; background: #fff;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    .preview img { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .preview .empty { color: #777; font-size: 13px; padding: 20px; text-align: center; }
+    footer { padding: 0 12px; margin: 17px auto 0; text-align: center; color: #e7eef5; font-size: 10px; }
+    @media (max-width: 560px) {
+      body { padding: 12px 9px 20px; }
+      .top-logo { width: 65px; height: 65px; margin-bottom: 20px; }
+      .info { padding: 17px 14px 20px; }
+      .fields { grid-template-columns: 1fr; gap: 12px; }
+      .field.full { grid-column: auto; }
+      .document-section { padding: 18px 13px 18px; }
+      .document-head { align-items: flex-start; }
+      .download { width: 100%; }
+      .preview { min-height: 320px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="top-logo">
+    <!-- Reemplaza logo-superior.png por tu logotipo autorizado -->
+    <img src="logo-superior.png" alt="Logotipo principal"
+         onerror="this.style.display='none'; this.nextElementSibling.style.display='block'">
+    <span class="placeholder" style="display:none">LOGO<br>SUPERIOR</span>
+  </div>
+
+  <main class="page">
+    <header>
+      <span class="shield" aria-hidden="true">⬡</span>
+      <h1>VERIFICACIÓN DE CONSTANCIAS</h1>
+      <!-- Cambia este enlace por la URL real de tu página de escaneo -->
+      <a class="qr-link" href="https://tudominio.com/escaneo" target="_blank"
+         rel="noopener noreferrer" aria-label="Abrir página de escaneo QR"
+         title="Abrir página de escaneo QR">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true">
+          <path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3z"/>
+          <path d="M6 6h1v1H6zM17 6h1v1h-1zM6 17h1v1H6zM14 14h3v3h-3zM20 14v2M20 19v2M17 20h-2"/>
+        </svg>
+      </a>
+    </header>
+
+    <section class="info">
+      <div class="info-title">ⓘ &nbsp; INFORMACIÓN DEL DOCUMENTO</div>
+      <div class="fields">
+        <div class="field">
+          <label>NOMBRE DEL CIUDADANO / RAZÓN SOCIAL</label>
+          <div class="value">Nombre o razón social</div>
+        </div>
+        <div class="field">
+          <label>DOCUMENTO DE IDENTIFICACIÓN</label>
+          <div class="value">Número de identificación</div>
+        </div>
+        <div class="field full">
+          <label>FECHA DE EMISIÓN / REGISTRO</label>
+          <div class="value">Fecha del documento</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="document-section">
+      <div class="document-head">
+        <div>
+          <div class="document-title">
+            <span aria-hidden="true">▤</span>
+            <h2>Previsualización del documento</h2>
+          </div>
+          <span class="status">DOCUMENTO DISPONIBLE PARA CONSULTA</span>
+        </div>
+        <a class="download" href="documento.pdf" download="documento.pdf">
+          <span aria-hidden="true">⇩</span> DESCARGAR PDF
+        </a>
+      </div>
+
+      <div class="preview">
+        <!-- La imagen que se muestra aquí es la vista previa del PDF.
+             Sustituye documento.jpg por la imagen de tu documento. -->
+        <img src="documento.jpg" alt="Vista previa del documento"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='block'">
+        <div class="empty" style="display:none">
+          Coloca aquí la imagen de vista previa con el nombre <b>documento.jpg</b>.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>© 2026 · Consulta de documentos</footer>
+</body>
+</html>
